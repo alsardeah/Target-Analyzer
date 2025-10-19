@@ -1,0 +1,5 @@
+{
+  "name": "Target Analyzer",
+  "description": "A computer vision tool to analyze bullet holes on a target. Upload an image, calibrate with a reference circle, and measure shot grouping distance and standard deviation.",
+  "requestFramePermissions": []
+}
