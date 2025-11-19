@@ -79,7 +79,6 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
     return (
         <div className="bg-gray-700 rounded-lg p-3 space-y-2">
             <h3 className="text-sm font-semibold text-gray-400 uppercase text-center border-b border-gray-600 pb-2 mb-2">Results</h3>
-            <ResultRow label="Scale" value={scale ? `${scale.toFixed(2)}` : null} unit="px/mm" />
             <ResultRow label="Total Shots" value={totalPoints.toString()} />
             <div className="pt-2">
               {renderContent()}

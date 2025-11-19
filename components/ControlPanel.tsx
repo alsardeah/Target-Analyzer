@@ -1,12 +1,7 @@
 import React, { useRef } from 'react';
 import type { Mode } from '../types';
-import { UploadIcon, EditIcon, RulerIcon, SigmaIcon, ClearIcon, RefreshCwIcon } from './icons';
+import { UploadIcon, EditIcon, RulerIcon, SigmaIcon, ClearIcon } from './icons';
 
-interface HoughParams {
-    sensitivity: number;
-    minRadius: number;
-    maxRadius: number;
-}
 interface ControlPanelProps {
     mode: Mode;
     setMode: (mode: Mode) => void;
@@ -15,31 +10,7 @@ interface ControlPanelProps {
     onImageUpload: (file: File) => void;
     onClearSelection: () => void;
     selectedCount: number;
-    houghParams: HoughParams;
-    setHoughParams: (params: HoughParams) => void;
-    onRedetect: () => void;
-    isImageLoaded: boolean;
 }
-
-const ParamSlider: React.FC<{label: string, value: number, onChange: (val: number) => void, min: number, max: number, step: number}> = 
-({ label, value, onChange, min, max, step }) => (
-    <div className="flex flex-col space-y-1">
-        <div className="flex justify-between text-xs text-gray-400">
-            <span>{label}</span>
-            <span className="font-mono">{value}</span>
-        </div>
-        <input
-            type="range"
-            min={min}
-            max={max}
-            step={step}
-            value={value}
-            onChange={(e) => onChange(parseFloat(e.target.value))}
-            className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
-        />
-    </div>
-);
-
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
     mode,
@@ -49,10 +20,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     onImageUpload,
     onClearSelection,
     selectedCount,
-    houghParams,
-    setHoughParams,
-    onRedetect,
-    isImageLoaded,
 }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -108,22 +75,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     </select>
                 </div>
             </div>
-
-            {isImageLoaded && (
-                <div className="space-y-3 p-3 bg-gray-700/50 rounded-lg">
-                    <h3 className="text-sm font-semibold text-gray-400 uppercase">Detection Settings</h3>
-                    <ParamSlider label="Sensitivity" value={houghParams.sensitivity} onChange={val => setHoughParams({...houghParams, sensitivity: val})} min={10} max={100} step={1} />
-                    <ParamSlider label="Min Radius (px)" value={houghParams.minRadius} onChange={val => setHoughParams({...houghParams, minRadius: val})} min={1} max={50} step={1} />
-                    <ParamSlider label="Max Radius (px)" value={houghParams.maxRadius} onChange={val => setHoughParams({...houghParams, maxRadius: val})} min={1} max={100} step={1} />
-                    <button
-                        onClick={onRedetect}
-                        className="w-full flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200 mt-2"
-                    >
-                        <RefreshCwIcon className="w-5 h-5 mr-2" />
-                        Re-detect Circles
-                    </button>
-                </div>
-            )}
 
             <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-gray-400 uppercase">Mode</h3>

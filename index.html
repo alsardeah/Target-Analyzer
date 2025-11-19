@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -9,6 +8,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script async src="https://docs.opencv.org/4.9.0/opencv.js"></script>
     <style>
+      html {
+        /* Prevents layout shift when scrollbar appears/disappears */
+        /* `scrollbar-gutter: stable;` is the modern way to achieve this. */
+        scrollbar-gutter: stable;
+      }
       body {
         background-color: #111827;
       }

@@ -1,10 +1,12 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useOpenCv } from './hooks/useOpenCv';
 import type { Circle, Point, Mode, ToastMessage, GroupMetrics } from './types';
 import { ControlPanel } from './components/ControlPanel';
-import { CanvasComponent } from './components/CanvasComponent';
+import { CanvasComponent, CanvasHandle } from './components/CanvasComponent';
 import { ResultsPanel } from './components/ResultsPanel';
 import { Toast } from './components/Toast';
+import { ZoomControls } from './components/ZoomControls';
 import { LoaderIcon, TargetIcon } from './components/icons';
 
 const App: React.FC = () => {
@@ -21,12 +23,9 @@ const App: React.FC = () => {
     const [toast, setToast] = useState<ToastMessage | null>(null);
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
     const [isDragging, setIsDragging] = useState<boolean>(false);
+    
     const imageRef = useRef<HTMLImageElement | null>(null);
-    const [houghParams, setHoughParams] = useState({
-        sensitivity: 20,
-        minRadius: 5,
-        maxRadius: 25,
-    });
+    const canvasRef = useRef<CanvasHandle>(null);
 
     const allCircles = [...detectedCircles, ...manualCircles];
 
@@ -34,7 +33,39 @@ const App: React.FC = () => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 3000);
     };
+    
+    // Load default image from local storage or fall back to default-target.png
+    useEffect(() => {
+        const loadProjectDefault = () => {
+            const img = new Image();
+            img.onload = () => {
+                setImage(img);
+                imageRef.current = img;
+            };
+            // If file doesn't exist, we just stay in the empty state
+            img.onerror = () => {
+                console.log("No default-target.png found in public directory.");
+            };
+            img.src = '/default-target.png';
+        };
 
+        const savedImage = localStorage.getItem('target_analyzer_default_image');
+        if (savedImage) {
+            const img = new Image();
+            img.onload = () => {
+                setImage(img);
+                imageRef.current = img;
+            };
+            img.onerror = () => {
+                localStorage.removeItem('target_analyzer_default_image');
+                loadProjectDefault();
+            };
+            img.src = savedImage;
+        } else {
+            loadProjectDefault();
+        }
+    }, []);
+    
     const resetState = (keepImage: boolean = false) => {
         if (!keepImage) {
             setImage(null);
@@ -46,6 +77,9 @@ const App: React.FC = () => {
         setSelectedIndices([]);
         setDistance(null);
         setGroupMetrics(null);
+        if (keepImage) {
+            canvasRef.current?.resetZoom();
+        }
     };
 
     const handleImageUpload = (file: File) => {
@@ -53,12 +87,22 @@ const App: React.FC = () => {
             resetState();
             const reader = new FileReader();
             reader.onload = (e) => {
+                const result = e.target?.result as string;
+                
+                // Save to local storage as default
+                try {
+                    localStorage.setItem('target_analyzer_default_image', result);
+                } catch (err) {
+                    console.error('Failed to save image to local storage', err);
+                    showToast('Image too large to set as default, but loaded successfully.', 'info');
+                }
+
                 const img = new Image();
                 img.onload = () => {
                     setImage(img);
                     imageRef.current = img;
                 };
-                img.src = e.target?.result as string;
+                img.src = result;
             };
             reader.readAsDataURL(file);
         }
@@ -68,11 +112,10 @@ const App: React.FC = () => {
         if (!openCvReady || !image) return;
         
         setIsProcessing(true);
-        // Clear previous detections but keep manual points
         setDetectedCircles([]);
         setSelectedIndices([]);
 
-        setTimeout(() => { // Allow UI to update before heavy processing
+        setTimeout(() => { 
             try {
                 const cv = window.cv;
                 const src = cv.imread(image);
@@ -81,8 +124,7 @@ const App: React.FC = () => {
                 cv.GaussianBlur(gray, gray, new cv.Size(9, 9), 2, 2);
 
                 const circles = new cv.Mat();
-                // Parameters: (image, circles, method, dp, minDist, param1, param2, minRadius, maxRadius)
-                cv.HoughCircles(gray, circles, cv.HOUGH_GRADIENT, 1, 15, 100, houghParams.sensitivity, houghParams.minRadius, houghParams.maxRadius);
+                cv.HoughCircles(gray, circles, cv.HOUGH_GRADIENT, 1, 15, 100, 20, 5, 25);
                 
                 const detected: Circle[] = [];
                 if (circles.cols > 0) {
@@ -105,16 +147,15 @@ const App: React.FC = () => {
                 setIsProcessing(false);
             }
         }, 50);
-    }, [image, openCvReady, houghParams]);
+    }, [image, openCvReady]);
 
     useEffect(() => {
         if (image) {
             detectCircles();
         }
-    }, [image]); // Removed detectCircles from dependency array to prevent re-running on param change
+    }, [image]); // Removed handleZoomReset dependency
     
     useEffect(() => {
-        // Per user request, use a fixed scale value instead of calculating it.
         if (image) {
             setScale(4.3165467625899280575539568345324);
         } else {
@@ -126,8 +167,6 @@ const App: React.FC = () => {
     const calculateMetrics = useCallback(() => {
         const selectedCircles = selectedIndices.map(i => allCircles[i]);
 
-        // --- Distance Calculation ---
-        // Only modify distance state if in distance mode
         if (mode === 'distance') {
             if (selectedCircles.length === 2 && scale) {
                 const [c1, c2] = selectedCircles;
@@ -136,12 +175,10 @@ const App: React.FC = () => {
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 setDistance(dist);
             } else {
-                setDistance(null); // Clear distance if selection is not 2 points in distance mode
+                setDistance(null); 
             }
         }
 
-        // --- Group Analysis Calculation ---
-        // Only modify group metrics state if in stddev or edit mode
         if (mode === 'stddev' || mode === 'edit') {
             const circlesToAnalyze = (mode === 'stddev') ? selectedCircles : allCircles;
             if (circlesToAnalyze.length > 1 && scale) {
@@ -171,9 +208,9 @@ const App: React.FC = () => {
                 }
                 const extremeSpread = Math.sqrt(maxDistSq) / scale;
                 
-                setGroupMetrics({ stdDev, meanRadius, extremeSpread });
+                setGroupMetrics({ stdDev, meanRadius, extremeSpread, count: n });
             } else {
-                setGroupMetrics(null); // Clear metrics if not enough points in the relevant modes
+                setGroupMetrics(null); 
             }
         }
     }, [selectedIndices, allCircles, mode, scale]);
@@ -188,22 +225,17 @@ const App: React.FC = () => {
 
         if (mode === 'edit') {
             if (clickedCircleIndex !== -1) {
-                // A circle was clicked in edit mode, remove it.
                 const circleToRemove = allCircles[clickedCircleIndex];
-                
                 setDetectedCircles(prev => prev.filter(c => c !== circleToRemove));
                 setManualCircles(prev => prev.filter(c => c !== circleToRemove));
-                
                 showToast('Point removed.', 'success');
-                // After removing a point, the indices are shifted, so we must clear selection.
                 clearSelection();
             } else {
-                // Clicked on empty space in edit mode, add a new manual circle.
                 const avgRadius = allCircles.length > 0 ? allCircles.reduce((acc, c) => acc + c.radius, 0) / allCircles.length : 10;
                 setManualCircles(prev => [...prev, { x: point.x, y: point.y, radius: avgRadius }]);
                 showToast('Manual point added.', 'success');
             }
-        } else { // For 'distance' and 'stddev' modes, handle selection
+        } else { 
             if (clickedCircleIndex !== -1) {
                 const isSelected = selectedIndices.includes(clickedCircleIndex);
                 if (isSelected) {
@@ -228,36 +260,16 @@ const App: React.FC = () => {
     }, [mode]);
 
     const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(false);
+      e.preventDefault(); e.stopPropagation(); setIsDragging(false);
       if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         const file = e.dataTransfer.files[0];
-        if (file.type.startsWith('image/')) {
-            handleImageUpload(file);
-        } else {
-            showToast('Please drop an image file.', 'error');
-        }
+        if (file.type.startsWith('image/')) { handleImageUpload(file); } else { showToast('Please drop an image file.', 'error'); }
         e.dataTransfer.clearData();
       }
     };
-
-    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(true);
-    };
-
-    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(false);
-    };
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); };
+    const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
 
     if (!openCvReady) {
         return (
@@ -270,47 +282,20 @@ const App: React.FC = () => {
     
     return (
         <div 
-          className="min-h-screen bg-gray-900 text-gray-200 font-sans flex flex-col p-4 lg:flex-row lg:space-x-4"
-          onDrop={handleDrop} 
-          onDragOver={handleDragOver}
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
+          className="min-h-screen bg-gray-900 text-gray-200 font-sans flex flex-col p-4 lg:flex-row lg:space-x-4 lg:h-screen lg:overflow-hidden"
+          onDrop={handleDrop} onDragOver={handleDragOver} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave}
         >
             <Toast toast={toast} />
-            <div className="w-full lg:w-80 flex-shrink-0 bg-gray-800 rounded-lg shadow-xl p-4 flex flex-col space-y-4 h-full">
+            <div className="w-full lg:w-80 flex-shrink-0 bg-gray-800 rounded-lg shadow-xl p-4 flex flex-col space-y-4 lg:overflow-y-auto">
                 <header className="text-center pb-2 border-b border-gray-700">
                     <h1 className="text-2xl font-bold text-cyan-400">🎯 Target Analyzer</h1>
                 </header>
-                <ControlPanel
-                    mode={mode}
-                    setMode={setMode}
-                    bulletDiameter={bulletDiameterMM}
-                    setBulletDiameter={setBulletDiameterMM}
-                    onImageUpload={handleImageUpload}
-                    onClearSelection={clearSelection}
-                    selectedCount={selectedIndices.length}
-                    houghParams={houghParams}
-                    setHoughParams={setHoughParams}
-                    onRedetect={detectCircles}
-                    isImageLoaded={!!image}
-                />
-                {image && (
-                  <ResultsPanel
-                      scale={scale}
-                      distance={distance}
-                      groupMetrics={groupMetrics}
-                      bulletDiameter={bulletDiameterMM}
-                      selectedCount={selectedIndices.length}
-                      mode={mode}
-                      totalPoints={allCircles.length}
-                  />
-                )}
-                <footer className="text-center pt-4 mt-auto text-xs text-gray-500">
-                    <p>by Ali Al-Sardi</p>
-                </footer>
+                <ControlPanel mode={mode} setMode={setMode} bulletDiameter={bulletDiameterMM} setBulletDiameter={setBulletDiameterMM} onImageUpload={handleImageUpload} onClearSelection={clearSelection} selectedCount={selectedIndices.length} />
+                {image && ( <ResultsPanel scale={scale} distance={distance} groupMetrics={groupMetrics} bulletDiameter={bulletDiameterMM} selectedCount={selectedIndices.length} mode={mode} totalPoints={allCircles.length} /> )}
+                <footer className="text-center pt-4 mt-auto text-xs text-gray-500"> <p>by Ali Al-Sardi</p> </footer>
             </div>
 
-            <main className="flex-grow mt-4 lg:mt-0 bg-gray-800 rounded-lg shadow-xl p-2 flex items-center justify-center relative">
+            <main className="flex-grow mt-4 lg:mt-0 bg-gray-800 rounded-lg shadow-xl relative overflow-hidden">
                 {isProcessing && (
                     <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20">
                          <LoaderIcon className="h-10 w-10 animate-spin text-cyan-400" />
@@ -323,23 +308,15 @@ const App: React.FC = () => {
                    </div>
                 )}
                 {image ? (
-                    <CanvasComponent
-                        image={image}
-                        circles={allCircles}
-                        selectedIndices={selectedIndices}
-                        onCanvasClick={handleCanvasClick}
-                        mode={mode}
-                    />
-                ) : (
-                    <div className="text-center text-gray-400 flex flex-col items-center">
-                        <TargetIcon className="w-24 h-24 text-gray-600 mb-4" />
-                        <h2 className="text-xl font-semibold">Upload a Target Image</h2>
-                        <p className="mt-2">Use the controls to select a file or drag & drop one here.</p>
-                    </div>
-                )}
-            </main>
-        </div>
-    );
-};
-
-export default App;
+                    <>
+                        <CanvasComponent
+                            ref={canvasRef}
+                            image={image}
+                            circles={allCircles}
+                            selectedIndices={selectedIndices}
+                            onCanvasClick={handleCanvasClick}
+                            mode={mode}
+                            groupMetrics={groupMetrics}
+                        />
+                        <ZoomControls
+                            onZoomIn={() => canvasRef.current?.zoom

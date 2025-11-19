@@ -1,10 +1,13 @@
-export interface Point {
-  x: number;
-  y: number;
+
+export interface Circle {
+    x: number;
+    y: number;
+    radius: number;
 }
 
-export interface Circle extends Point {
-  radius: number;
+export interface Point {
+    x: number;
+    y: number;
 }
 
 export type Mode = 'edit' | 'distance' | 'stddev';
@@ -15,7 +18,16 @@ export interface ToastMessage {
 }
 
 export interface GroupMetrics {
-  stdDev: { x: number; y: number };
-  meanRadius: number;
-  extremeSpread: number;
+    stdDev: {
+        x: number;
+        y: number;
+    };
+    meanRadius: number;
+    extremeSpread: number;
+    count: number;
+}
+
+export interface Pan {
+    x: number;
+    y: number;
 }
