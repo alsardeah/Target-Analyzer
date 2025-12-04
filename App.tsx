@@ -7,7 +7,11 @@ import { CanvasComponent, CanvasHandle } from './components/CanvasComponent';
 import { ResultsPanel } from './components/ResultsPanel';
 import { Toast } from './components/Toast';
 import { ZoomControls } from './components/ZoomControls';
+import { ContactModal } from './components/ContactModal';
 import { LoaderIcon, TargetIcon } from './components/icons';
+
+// A simple SVG target encoded as Base64 to serve as a guaranteed fallback
+const FALLBACK_TARGET_IMAGE = `data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgNTAwIDUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iNTAwIiBoZWlnaHQ9IjUwMCIgZmlsbD0iI2UzZTVlNSIvPgogIDxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iMjQwIiBmaWxsPSIjZjNmNGY2IiBzdHJva2U9IiMxZjI5MzciIHN0cm9rZS13aWR0aD0iMiIvPgogIDxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iMjAwIiBmaWxsPSJub25lIiBzdHJva2U9IiMxZjI5MzciIHN0cm9rZS13aWR0aD0iMiIvPgogIDxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iMTYwIiBmaWxsPSJub25lIiBzdHJva2U9IiMxZjI5MzciIHN0cm9rZS13aWR0aD0iMiIvPgogIDxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iMTIwIiBmaWxsPSJub25lIiBzdHJva2U9IiMxZjI5MzciIHN0cm9rZS13aWR0aD0iMiIvPgogIDxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iODAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzFmMjkzNyIgc3Ryb2tlLXdpZHRoPSIyIi8+CiAgPGNpcmNsZSBjeD0iMjUwIiBjeT0iMjUwIiByPSI0MCIgZmlsbD0iIzFmMjkzNyIgc3Ryb2tlPSIjMWYyOTM3IiBzdHJva2Utd2lkdGg9IjIiLz4KICA8dGV4dCB4PSIyNTAiIHk9IjI2NSIgZm9udC1zaXplPSI0MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0id2hpdGUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iYm9sZCI+MTA8L3RleHQ+Cjwvc3ZnPg==`;
 
 const App: React.FC = () => {
     const { openCvReady } = useOpenCv();
@@ -23,6 +27,7 @@ const App: React.FC = () => {
     const [toast, setToast] = useState<ToastMessage | null>(null);
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
     const [isDragging, setIsDragging] = useState<boolean>(false);
+    const [showContact, setShowContact] = useState<boolean>(false);
     
     const imageRef = useRef<HTMLImageElement | null>(null);
     const canvasRef = useRef<CanvasHandle>(null);
@@ -34,17 +39,26 @@ const App: React.FC = () => {
         setTimeout(() => setToast(null), 3000);
     };
     
-    // Load default image from local storage or fall back to default-target.png
+    // Load default image from local storage or fall back to default-target.png or fallback base64
     useEffect(() => {
+        const loadFallback = () => {
+             const img = new Image();
+             img.onload = () => {
+                 setImage(img);
+                 imageRef.current = img;
+             };
+             img.src = FALLBACK_TARGET_IMAGE;
+        };
+
         const loadProjectDefault = () => {
             const img = new Image();
             img.onload = () => {
                 setImage(img);
                 imageRef.current = img;
             };
-            // If file doesn't exist, we just stay in the empty state
             img.onerror = () => {
-                console.log("No default-target.png found in public directory.");
+                console.log("No default-target.png found, using fallback.");
+                loadFallback();
             };
             img.src = '/default-target.png';
         };
@@ -57,6 +71,7 @@ const App: React.FC = () => {
                 imageRef.current = img;
             };
             img.onerror = () => {
+                console.error("Failed to load saved image from localStorage.");
                 localStorage.removeItem('target_analyzer_default_image');
                 loadProjectDefault();
             };
@@ -89,14 +104,6 @@ const App: React.FC = () => {
             reader.onload = (e) => {
                 const result = e.target?.result as string;
                 
-                // Save to local storage as default
-                try {
-                    localStorage.setItem('target_analyzer_default_image', result);
-                } catch (err) {
-                    console.error('Failed to save image to local storage', err);
-                    showToast('Image too large to set as default, but loaded successfully.', 'info');
-                }
-
                 const img = new Image();
                 img.onload = () => {
                     setImage(img);
@@ -106,6 +113,62 @@ const App: React.FC = () => {
             };
             reader.readAsDataURL(file);
         }
+    };
+
+    const handleSaveAsDefault = () => {
+        if (!imageRef.current) return;
+        
+        try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = imageRef.current;
+            
+            // Resize to max 1280px to ensure it fits in localStorage (approx < 5MB)
+            const maxDim = 1280;
+            let width = img.naturalWidth;
+            let height = img.naturalHeight;
+            
+            if (width > maxDim || height > maxDim) {
+                const ratio = Math.min(maxDim / width, maxDim / height);
+                width *= ratio;
+                height *= ratio;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            if (ctx) {
+                ctx.drawImage(img, 0, 0, width, height);
+                // Compress to JPEG 0.7 quality
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                localStorage.setItem('target_analyzer_default_image', dataUrl);
+                showToast('Current image saved as startup default.', 'success');
+            }
+        } catch (error) {
+            console.error('Failed to save default image', error);
+            showToast('Failed to save: Image likely too complex for storage.', 'error');
+        }
+    };
+
+    const handleResetDefault = () => {
+        localStorage.removeItem('target_analyzer_default_image');
+        resetState();
+        const img = new Image();
+        img.onload = () => {
+             setImage(img);
+             imageRef.current = img;
+             showToast('Restored factory default image.', 'success');
+        };
+        img.onerror = () => {
+             // Fallback if file missing
+             const fallback = new Image();
+             fallback.onload = () => {
+                 setImage(fallback);
+                 imageRef.current = fallback;
+             }
+             fallback.src = FALLBACK_TARGET_IMAGE;
+        };
+        img.src = '/default-target.png';
     };
     
     const detectCircles = useCallback(() => {
@@ -286,13 +349,35 @@ const App: React.FC = () => {
           onDrop={handleDrop} onDragOver={handleDragOver} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave}
         >
             <Toast toast={toast} />
+            <ContactModal isOpen={showContact} onClose={() => setShowContact(false)} />
+            
             <div className="w-full lg:w-80 flex-shrink-0 bg-gray-800 rounded-lg shadow-xl p-4 flex flex-col space-y-4 lg:overflow-y-auto">
                 <header className="text-center pb-2 border-b border-gray-700">
                     <h1 className="text-2xl font-bold text-cyan-400">🎯 Target Analyzer</h1>
                 </header>
-                <ControlPanel mode={mode} setMode={setMode} bulletDiameter={bulletDiameterMM} setBulletDiameter={setBulletDiameterMM} onImageUpload={handleImageUpload} onClearSelection={clearSelection} selectedCount={selectedIndices.length} />
+                <ControlPanel 
+                    mode={mode} 
+                    setMode={setMode} 
+                    bulletDiameter={bulletDiameterMM} 
+                    setBulletDiameter={setBulletDiameterMM} 
+                    onImageUpload={handleImageUpload} 
+                    onClearSelection={clearSelection} 
+                    selectedCount={selectedIndices.length}
+                    onSaveDefault={handleSaveAsDefault}
+                    onResetDefault={handleResetDefault}
+                    hasImage={!!image}
+                />
                 {image && ( <ResultsPanel scale={scale} distance={distance} groupMetrics={groupMetrics} bulletDiameter={bulletDiameterMM} selectedCount={selectedIndices.length} mode={mode} totalPoints={allCircles.length} /> )}
-                <footer className="text-center pt-4 mt-auto text-xs text-gray-500"> <p>by Ali Al-Sardi</p> </footer>
+                <footer className="text-center pt-4 mt-auto text-xs text-gray-500">
+                    <p>by Ali Al-Sardi</p>
+                    <div className="mt-2 flex justify-center space-x-2 items-center">
+                        <a href="#" className="hover:text-cyan-400 transition-colors">Privacy</a>
+                        <span>•</span>
+                        <a href="#" className="hover:text-cyan-400 transition-colors">Terms</a>
+                        <span>•</span>
+                        <button onClick={() => setShowContact(true)} className="hover:text-cyan-400 transition-colors">Contact</button>
+                    </div>
+                </footer>
             </div>
 
             <main className="flex-grow mt-4 lg:mt-0 bg-gray-800 rounded-lg shadow-xl relative overflow-hidden">
@@ -319,4 +404,22 @@ const App: React.FC = () => {
                             groupMetrics={groupMetrics}
                         />
                         <ZoomControls
-                            onZoomIn={() => canvasRef.current?.zoom
+                            onZoomIn={() => canvasRef.current?.zoomIn()}
+                            onZoomOut={() => canvasRef.current?.zoomOut()}
+                            onZoomToFit={() => canvasRef.current?.resetZoom()}
+                            onZoomToSelection={() => canvasRef.current?.zoomToSelection()}
+                            selectionCount={selectedIndices.length}
+                        />
+                    </>
+                ) : (
+                    <div className="h-full w-full flex flex-col items-center justify-center text-gray-500 space-y-4">
+                        <TargetIcon className="w-24 h-24 opacity-20" />
+                        <p className="text-lg">Upload an image or drop one here to begin</p>
+                    </div>
+                )}
+            </main>
+        </div>
+    );
+};
+
+export default App;

@@ -1,6 +1,7 @@
+
 import React, { useRef } from 'react';
 import type { Mode } from '../types';
-import { UploadIcon, EditIcon, RulerIcon, SigmaIcon, ClearIcon } from './icons';
+import { UploadIcon, EditIcon, RulerIcon, SigmaIcon, ClearIcon, CheckCircleIcon, RefreshCwIcon } from './icons';
 
 interface ControlPanelProps {
     mode: Mode;
@@ -10,6 +11,9 @@ interface ControlPanelProps {
     onImageUpload: (file: File) => void;
     onClearSelection: () => void;
     selectedCount: number;
+    onSaveDefault: () => void;
+    onResetDefault: () => void;
+    hasImage: boolean;
 }
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
@@ -20,6 +24,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     onImageUpload,
     onClearSelection,
     selectedCount,
+    onSaveDefault,
+    onResetDefault,
+    hasImage
 }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -91,6 +98,30 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             <span>{m.label}</span>
                         </button>
                     ))}
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-gray-400 uppercase">Startup Image</h3>
+                <div className="flex flex-col space-y-2">
+                    {hasImage && (
+                        <button
+                            onClick={onSaveDefault}
+                            className="flex items-center justify-center p-2 rounded-md bg-gray-700 hover:bg-green-700 hover:text-white text-gray-300 transition-colors text-xs"
+                            title="Save current image as the startup default"
+                        >
+                            <CheckCircleIcon className="w-4 h-4 mr-2" />
+                            Set Current as Default
+                        </button>
+                    )}
+                    <button
+                        onClick={onResetDefault}
+                        className="flex items-center justify-center p-2 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors text-xs"
+                        title="Restore original factory image"
+                    >
+                        <RefreshCwIcon className="w-4 h-4 mr-2" />
+                        Reset to Factory
+                    </button>
                 </div>
             </div>
 
