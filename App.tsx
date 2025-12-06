@@ -8,10 +8,10 @@ import { ResultsPanel } from './components/ResultsPanel';
 import { Toast } from './components/Toast';
 import { ZoomControls } from './components/ZoomControls';
 import { ContactModal } from './components/ContactModal';
+import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
+import { TermsAndConditionsModal } from './components/TermsAndConditionsModal';
 import { LoaderIcon, TargetIcon } from './components/icons';
 
-// A simple SVG target encoded as Base64 to serve as a guaranteed fallback
-const FALLBACK_TARGET_IMAGE = `data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgNTAwIDUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iNTAwIiBoZWlnaHQ9IjUwMCIgZmlsbD0iI2UzZTVlNSIvPgogIDxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iMjQwIiBmaWxsPSIjZjNmNGY2IiBzdHJva2U9IiMxZjI5MzciIHN0cm9rZS13aWR0aD0iMiIvPgogIDxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iMjAwIiBmaWxsPSJub25lIiBzdHJva2U9IiMxZjI5MzciIHN0cm9rZS13aWR0aD0iMiIvPgogIDxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iMTYwIiBmaWxsPSJub25lIiBzdHJva2U9IiMxZjI5MzciIHN0cm9rZS13aWR0aD0iMiIvPgogIDxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iMTIwIiBmaWxsPSJub25lIiBzdHJva2U9IiMxZjI5MzciIHN0cm9rZS13aWR0aD0iMiIvPgogIDxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iODAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzFmMjkzNyIgc3Ryb2tlLXdpZHRoPSIyIi8+CiAgPGNpcmNsZSBjeD0iMjUwIiBjeT0iMjUwIiByPSI0MCIgZmlsbD0iIzFmMjkzNyIgc3Ryb2tlPSIjMWYyOTM3IiBzdHJva2Utd2lkdGg9IjIiLz4KICA8dGV4dCB4PSIyNTAiIHk9IjI2NSIgZm9udC1zaXplPSI0MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0id2hpdGUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iYm9sZCI+MTA8L3RleHQ+Cjwvc3ZnPg==`;
 
 const App: React.FC = () => {
     const { openCvReady } = useOpenCv();
@@ -28,6 +28,8 @@ const App: React.FC = () => {
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
     const [isDragging, setIsDragging] = useState<boolean>(false);
     const [showContact, setShowContact] = useState<boolean>(false);
+    const [showPrivacy, setShowPrivacy] = useState<boolean>(false);
+    const [showTerms, setShowTerms] = useState<boolean>(false);
     
     const imageRef = useRef<HTMLImageElement | null>(null);
     const canvasRef = useRef<CanvasHandle>(null);
@@ -39,30 +41,20 @@ const App: React.FC = () => {
         setTimeout(() => setToast(null), 3000);
     };
     
-    // Load default image from local storage or fall back to default-target.png or fallback base64
+    const loadProjectDefault = useCallback(() => {
+        const img = new Image();
+        img.onload = () => {
+            setImage(img);
+            imageRef.current = img;
+        };
+        img.onerror = () => {
+            console.error("Failed to load default target image from /default-target.png. Please ensure the file exists in the public directory.");
+            showToast('Error: Default target image could not be loaded.', 'error');
+        };
+        img.src = '/default-target.png';
+    }, []);
+
     useEffect(() => {
-        const loadFallback = () => {
-             const img = new Image();
-             img.onload = () => {
-                 setImage(img);
-                 imageRef.current = img;
-             };
-             img.src = FALLBACK_TARGET_IMAGE;
-        };
-
-        const loadProjectDefault = () => {
-            const img = new Image();
-            img.onload = () => {
-                setImage(img);
-                imageRef.current = img;
-            };
-            img.onerror = () => {
-                console.log("No default-target.png found, using fallback.");
-                loadFallback();
-            };
-            img.src = '/default-target.png';
-        };
-
         const savedImage = localStorage.getItem('target_analyzer_default_image');
         if (savedImage) {
             const img = new Image();
@@ -73,13 +65,13 @@ const App: React.FC = () => {
             img.onerror = () => {
                 console.error("Failed to load saved image from localStorage.");
                 localStorage.removeItem('target_analyzer_default_image');
-                loadProjectDefault();
+                loadProjectDefault(); // Fallback to project default
             };
             img.src = savedImage;
         } else {
             loadProjectDefault();
         }
-    }, []);
+    }, [loadProjectDefault]);
     
     const resetState = (keepImage: boolean = false) => {
         if (!keepImage) {
@@ -123,7 +115,6 @@ const App: React.FC = () => {
             const ctx = canvas.getContext('2d');
             const img = imageRef.current;
             
-            // Resize to max 1280px to ensure it fits in localStorage (approx < 5MB)
             const maxDim = 1280;
             let width = img.naturalWidth;
             let height = img.naturalHeight;
@@ -139,7 +130,6 @@ const App: React.FC = () => {
             
             if (ctx) {
                 ctx.drawImage(img, 0, 0, width, height);
-                // Compress to JPEG 0.7 quality
                 const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
                 localStorage.setItem('target_analyzer_default_image', dataUrl);
                 showToast('Current image saved as startup default.', 'success');
@@ -153,22 +143,8 @@ const App: React.FC = () => {
     const handleResetDefault = () => {
         localStorage.removeItem('target_analyzer_default_image');
         resetState();
-        const img = new Image();
-        img.onload = () => {
-             setImage(img);
-             imageRef.current = img;
-             showToast('Restored factory default image.', 'success');
-        };
-        img.onerror = () => {
-             // Fallback if file missing
-             const fallback = new Image();
-             fallback.onload = () => {
-                 setImage(fallback);
-                 imageRef.current = fallback;
-             }
-             fallback.src = FALLBACK_TARGET_IMAGE;
-        };
-        img.src = '/default-target.png';
+        loadProjectDefault();
+        showToast('Restored project default image.', 'success');
     };
     
     const detectCircles = useCallback(() => {
@@ -216,7 +192,7 @@ const App: React.FC = () => {
         if (image) {
             detectCircles();
         }
-    }, [image]); // Removed handleZoomReset dependency
+    }, [image, detectCircles]);
     
     useEffect(() => {
         if (image) {
@@ -350,6 +326,8 @@ const App: React.FC = () => {
         >
             <Toast toast={toast} />
             <ContactModal isOpen={showContact} onClose={() => setShowContact(false)} />
+            <PrivacyPolicyModal isOpen={showPrivacy} onClose={() => setShowPrivacy(false)} />
+            <TermsAndConditionsModal isOpen={showTerms} onClose={() => setShowTerms(false)} />
             
             <div className="w-full lg:w-80 flex-shrink-0 bg-gray-800 rounded-lg shadow-xl p-4 flex flex-col space-y-4 lg:overflow-y-auto">
                 <header className="text-center pb-2 border-b border-gray-700">
@@ -369,11 +347,10 @@ const App: React.FC = () => {
                 />
                 {image && ( <ResultsPanel scale={scale} distance={distance} groupMetrics={groupMetrics} bulletDiameter={bulletDiameterMM} selectedCount={selectedIndices.length} mode={mode} totalPoints={allCircles.length} /> )}
                 <footer className="text-center pt-4 mt-auto text-xs text-gray-500">
-                    <p>by Ali Al-Sardi</p>
                     <div className="mt-2 flex justify-center space-x-2 items-center">
-                        <a href="#" className="hover:text-cyan-400 transition-colors">Privacy</a>
+                        <button onClick={() => setShowPrivacy(true)} className="hover:text-cyan-400 transition-colors">Privacy</button>
                         <span>•</span>
-                        <a href="#" className="hover:text-cyan-400 transition-colors">Terms</a>
+                        <button onClick={() => setShowTerms(true)} className="hover:text-cyan-400 transition-colors">Terms</button>
                         <span>•</span>
                         <button onClick={() => setShowContact(true)} className="hover:text-cyan-400 transition-colors">Contact</button>
                     </div>
@@ -389,7 +366,7 @@ const App: React.FC = () => {
                 )}
                 {isDragging && (
                    <div className="absolute inset-0 bg-gray-900 bg-opacity-70 border-4 border-dashed border-cyan-400 rounded-lg flex items-center justify-center z-30 pointer-events-none">
-                      <p className="text-2xl font-bold text-white">Drop Image Here</p>
+                      <p className="text-2xl font-bold text-white">Drop Target Here</p>
                    </div>
                 )}
                 {image ? (
@@ -414,7 +391,7 @@ const App: React.FC = () => {
                 ) : (
                     <div className="h-full w-full flex flex-col items-center justify-center text-gray-500 space-y-4">
                         <TargetIcon className="w-24 h-24 opacity-20" />
-                        <p className="text-lg">Upload an image or drop one here to begin</p>
+                        <p className="text-lg">Upload a target or drop one here to begin</p>
                     </div>
                 )}
             </main>

@@ -61,11 +61,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     className="w-full flex items-center justify-center bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200"
                 >
                     <UploadIcon className="w-5 h-5 mr-2" />
-                    Upload Image
+                    Upload Scanned Target
                 </button>
             </div>
 
-            <div className="space-y-3">
+            {/* <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-gray-400 uppercase">Settings</h3>
                 <div className="flex flex-col space-y-2">
                     <label className="text-sm text-gray-300">Bullet Diameter (mm)</label>
@@ -81,7 +81,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         <option value="12.7">12.7mm</option>
                     </select>
                 </div>
-            </div>
+            </div> */}
 
             <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-gray-400 uppercase">Mode</h3>
